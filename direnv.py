@@ -66,8 +66,8 @@ class DirenvEventListener(sublime_plugin.ViewEventListener):
             "direnv: unloaded %s" % direnv_dir.strip('-'))
 
     def on_post_save_async(self):
-        self._update_environment()
         self._rollback_environment()
+        self._update_environment()
 
 
 class DirenvAllow(sublime_plugin.TextCommand):
