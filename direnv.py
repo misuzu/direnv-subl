@@ -80,8 +80,10 @@ class Direnv(object):
         stdout and environment.update(json.loads(stdout))
 
         for key, value in environment.items():
+            if key.startswith('DIRENV_') or value is None:
+                continue
             prev = os.environ.get(key)
-            if not key.startswith('DIRENV_') and prev != value:
+            if prev != value:
                 self._previous_environment[key] = prev
                 os.environ[key] = value
 
