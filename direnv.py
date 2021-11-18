@@ -1,73 +1,93 @@
-import os
+import concurrent.futures
 import json
+import os
 import subprocess
 
 import sublime
 import sublime_plugin
 
 
-class DirenvEventListener(sublime_plugin.ViewEventListener):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class Direnv(object):
+    def __init__(self):
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self._direnv = {}
-        self._previous = {}
+        self._previous_environment = {}
+        self._current_direnv_path = None
 
-    def _update_environment(self):
-        variables = self._direnv.setdefault(self.view.id(), {})
-        previous = self._previous.setdefault(self.view.id(), {})
+    @staticmethod
+    def _find_envrc_directory(file_name):
+        while file_name and file_name != '/':
+            envrc_path = os.path.join(file_name, '.envrc')
+            if os.path.isfile(envrc_path):
+                return file_name
+            file_name = os.path.dirname(file_name)
 
-        env = {}
-        env.update(os.environ)
-        env.update(variables)
-        process = subprocess.Popen(
-            ['direnv', 'export', 'json'],
-            cwd=os.path.dirname(self.view.file_name()),
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-        returncode = process.wait()
-        if returncode != 0:
-            self._rollback_environment()
-            sublime.status_message(process.stderr.read().decode())
-            return
+    def _update_environment(self, file_path):
+        direnv_path = self._find_envrc_directory(file_path)
+        direnv_path_prev = self._current_direnv_path
 
-        data = process.stdout.read().decode()
-        if data:
-            variables.update(json.loads(data))
+        self._current_direnv_path = direnv_path
 
-        for key, value in variables.items():
-            prev = os.environ.get(key)
-            if not key.startswith('DIRENV_') and prev != value:
-                previous[key] = prev
-                os.environ[key] = value
-
-        return variables.get('DIRENV_DIR')
-
-    def _rollback_environment(self):
-        variables = self._direnv.get(self.view.id(), {})
-        previous = self._previous.pop(self.view.id(), {})
-
+        self._previous_environment, previous = {}, self._previous_environment
         for key, value in previous.items():
             if value is None:
                 os.environ.pop(key)
             else:
                 os.environ[key] = value
 
-        return variables.get('DIRENV_DIR')
+        if direnv_path is None:
+            if direnv_path_prev is not None:
+                sublime.status_message(
+                    "direnv: unloaded %s" % direnv_path_prev)
+            return
 
-    def on_activated_async(self):
-        direnv_dir = self._update_environment()
-        direnv_dir and sublime.status_message(
-            "direnv: loaded %s" % direnv_dir.strip('-'))
+        if direnv_path != direnv_path_prev:
+            sublime.status_message("direnv: loading %s" % direnv_path)
 
-    def on_deactivated(self):
-        direnv_dir = self._rollback_environment()
-        direnv_dir and sublime.status_message(
-            "direnv: unloaded %s" % direnv_dir.strip('-'))
+        environment = self._direnv.setdefault(direnv_path, {})
 
-    def on_post_save_async(self):
-        self._rollback_environment()
-        self._update_environment()
+        env = {}
+        env.update(os.environ)
+        env.update(environment)
+        process = subprocess.Popen(
+            ['direnv', 'export', 'json'],
+            cwd=direnv_path,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
+        returncode = process.wait()
+        if returncode != 0:
+            sublime.status_message(process.stderr.read().decode())
+            return
+
+        data = process.stdout.read().decode()
+        data and environment.update(json.loads(data))
+
+        for key, value in environment.items():
+            prev = os.environ.get(key)
+            if not key.startswith('DIRENV_') and prev != value:
+                self._previous_environment[key] = prev
+                os.environ[key] = value
+
+        if data or direnv_path != direnv_path_prev:
+            sublime.status_message("direnv: loaded %s" % direnv_path)
+
+    def push(self, file_path):
+        future = self._executor.submit(self._update_environment, file_path)
+        future.add_done_callback(lambda f: f.result())
+
+
+class DirenvEventListener(sublime_plugin.ViewEventListener):
+    direnv = Direnv()
+
+    def on_load(self):
+        self.direnv.push(self.view.file_name())
+
+    def on_activated(self):
+        self.direnv.push(self.view.file_name())
+
+    def on_post_save(self):
+        self.direnv.push(self.view.file_name())
 
 
 class DirenvAllow(sublime_plugin.TextCommand):
@@ -75,7 +95,6 @@ class DirenvAllow(sublime_plugin.TextCommand):
         process = subprocess.Popen(
             ['direnv', 'allow'],
             cwd=os.path.dirname(self.view.file_name()),
-            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
         returncode = process.wait()
         if returncode != 0:
@@ -87,7 +106,6 @@ class DirenvDeny(sublime_plugin.TextCommand):
         process = subprocess.Popen(
             ['direnv', 'deny'],
             cwd=os.path.dirname(self.view.file_name()),
-            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
         returncode = process.wait()
         if returncode != 0:
