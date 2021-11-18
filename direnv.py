@@ -67,7 +67,7 @@ class Direnv(object):
 
         env = {}
         env.update(os.environ)
-        env.update(environment)
+        env.update({k: v for k, v in environment.items() if v is not None})
         returncode, stdout, stderr = get_output(
             ['direnv', 'export', 'json'],
             direnv_path,
