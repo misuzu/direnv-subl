@@ -1,10 +1,14 @@
 import concurrent.futures
 import json
 import os
+import re
 import subprocess
 
 import sublime
 import sublime_plugin
+
+
+ANSI_ESCAPE_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
 class Direnv(object):
@@ -57,7 +61,9 @@ class Direnv(object):
             stderr=subprocess.PIPE)
         returncode = process.wait()
         if returncode != 0:
-            sublime.status_message(process.stderr.read().decode())
+            sublime.status_message(
+                ANSI_ESCAPE_RE.sub('', process.stderr.read().decode()))
+            self._current_direnv_path = None
             return
 
         data = process.stdout.read().decode()
@@ -98,7 +104,8 @@ class DirenvAllow(sublime_plugin.TextCommand):
             stderr=subprocess.PIPE)
         returncode = process.wait()
         if returncode != 0:
-            sublime.status_message(process.stderr.read().decode())
+            sublime.status_message(
+                ANSI_ESCAPE_RE.sub('', process.stderr.read().decode()))
 
 
 class DirenvDeny(sublime_plugin.TextCommand):
@@ -109,4 +116,5 @@ class DirenvDeny(sublime_plugin.TextCommand):
             stderr=subprocess.PIPE)
         returncode = process.wait()
         if returncode != 0:
-            sublime.status_message(process.stderr.read().decode())
+            sublime.status_message(
+                ANSI_ESCAPE_RE.sub('', process.stderr.read().decode()))
