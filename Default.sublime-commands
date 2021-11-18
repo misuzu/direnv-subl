@@ -1,0 +1,10 @@
+[
+    {
+        "caption": "direnv allow",
+        "command": "direnv_allow"
+    }
+    {
+        "caption": "direnv deny",
+        "command": "direnv_deny"
+    }
+]
