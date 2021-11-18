@@ -11,6 +11,21 @@ import sublime_plugin
 ANSI_ESCAPE_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
+def get_output(cmd, cwd, env=None):
+    process = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE)
+    returncode = process.wait()
+    return (
+        returncode,
+        process.stdout.read().decode(),
+        ANSI_ESCAPE_RE.sub('', process.stderr.read().decode()),
+    )
+
+
 class Direnv(object):
     def __init__(self):
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -53,21 +68,16 @@ class Direnv(object):
         env = {}
         env.update(os.environ)
         env.update(environment)
-        process = subprocess.Popen(
+        returncode, stdout, stderr = get_output(
             ['direnv', 'export', 'json'],
-            cwd=direnv_path,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-        returncode = process.wait()
+            direnv_path,
+            env)
         if returncode != 0:
-            sublime.status_message(
-                ANSI_ESCAPE_RE.sub('', process.stderr.read().decode()))
+            sublime.status_message(stderr)
             self._current_direnv_path = None
             return
 
-        data = process.stdout.read().decode()
-        data and environment.update(json.loads(data))
+        stdout and environment.update(json.loads(stdout))
 
         for key, value in environment.items():
             prev = os.environ.get(key)
@@ -75,7 +85,7 @@ class Direnv(object):
                 self._previous_environment[key] = prev
                 os.environ[key] = value
 
-        if data or direnv_path != direnv_path_prev:
+        if stdout or direnv_path != direnv_path_prev:
             sublime.status_message("direnv: loaded %s" % direnv_path)
 
     def push(self, file_path):
@@ -83,38 +93,37 @@ class Direnv(object):
         future.add_done_callback(lambda f: f.result())
 
 
-class DirenvEventListener(sublime_plugin.ViewEventListener):
-    direnv = Direnv()
+direnv = Direnv()
 
+
+class DirenvEventListener(sublime_plugin.ViewEventListener):
     def on_load(self):
-        self.direnv.push(self.view.file_name())
+        direnv.push(self.view.file_name())
 
     def on_activated(self):
-        self.direnv.push(self.view.file_name())
+        direnv.push(self.view.file_name())
 
     def on_post_save(self):
-        self.direnv.push(self.view.file_name())
+        direnv.push(self.view.file_name())
 
 
 class DirenvAllow(sublime_plugin.TextCommand):
     def run(self, edit):
-        process = subprocess.Popen(
+        returncode, stdout, stderr = get_output(
             ['direnv', 'allow'],
-            cwd=os.path.dirname(self.view.file_name()),
-            stderr=subprocess.PIPE)
-        returncode = process.wait()
+            os.path.dirname(self.view.file_name()))
         if returncode != 0:
-            sublime.status_message(
-                ANSI_ESCAPE_RE.sub('', process.stderr.read().decode()))
+            sublime.status_message(stderr)
+        else:
+            direnv.push(self.view.file_name())
 
 
 class DirenvDeny(sublime_plugin.TextCommand):
     def run(self, edit):
-        process = subprocess.Popen(
+        returncode, stdout, stderr = get_output(
             ['direnv', 'deny'],
-            cwd=os.path.dirname(self.view.file_name()),
-            stderr=subprocess.PIPE)
-        returncode = process.wait()
+            os.path.dirname(self.view.file_name()))
         if returncode != 0:
-            sublime.status_message(
-                ANSI_ESCAPE_RE.sub('', process.stderr.read().decode()))
+            sublime.status_message(stderr)
+        else:
+            direnv.push(self.view.file_name())
