@@ -62,9 +62,6 @@ class Direnv(object):
                     "direnv: unloaded %s" % direnv_path_prev)
             return
 
-        if direnv_path != direnv_path_prev:
-            sublime.status_message("direnv: loading %s" % direnv_path)
-
         environment = self._direnv.setdefault(direnv_path, {})
 
         env = {}
