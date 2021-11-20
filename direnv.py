@@ -7,6 +7,8 @@ import subprocess
 import sublime
 import sublime_plugin
 
+from .progressbar import progressbar
+
 
 ANSI_ESCAPE_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
@@ -68,10 +70,13 @@ class Direnv(object):
         env = {}
         env.update(os.environ)
         env.update({k: v for k, v in environment.items() if v is not None})
-        returncode, stdout, stderr = get_output(
-            ['direnv', 'export', 'json'],
-            direnv_path,
-            env)
+        with progressbar(
+                sublime.status_message,
+                "direnv: loading " + direnv_path + " %s"):
+            returncode, stdout, stderr = get_output(
+                ['direnv', 'export', 'json'],
+                direnv_path,
+                env)
         if returncode != 0:
             sublime.status_message(stderr)
             self._current_direnv_path = None
