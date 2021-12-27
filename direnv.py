@@ -14,18 +14,19 @@ ANSI_ESCAPE_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
 def get_output(cmd, cwd, env=None):
-    process = subprocess.Popen(
-        cmd,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
-    returncode = process.wait()
-    return (
-        returncode,
-        process.stdout.read().decode(),
-        ANSI_ESCAPE_RE.sub('', process.stderr.read().decode()),
-    )
+    try:
+        process = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
+        returncode = process.wait()
+        return (returncode,
+                process.stdout.read().decode(),
+                ANSI_ESCAPE_RE.sub('', process.stderr.read().decode()),)
+    except (OSError, subprocess.CalledProcessError) as e:
+        return (e.errno, '', str(e))
 
 
 class Direnv(object):
@@ -67,15 +68,14 @@ class Direnv(object):
         env = {}
         env.update(os.environ)
         env.update({k: v for k, v in environment.items() if v is not None})
-        with progressbar(
-                sublime.status_message,
-                "direnv: loading " + direnv_path + " %s"):
+        with progressbar(sublime.status_message,
+                        "direnv: loading " + direnv_path + " %s"):
             returncode, stdout, stderr = get_output(
                 ['direnv', 'export', 'json'],
                 direnv_path,
                 env)
         if returncode != 0:
-            sublime.status_message(stderr)
+            sublime.status_message("direnv load error: %s" % stderr)
             self._current_direnv_path = None
             return
 
