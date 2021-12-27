@@ -11,7 +11,7 @@ from .progressbar import progressbar
 
 
 ANSI_ESCAPE_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-
+DIRENV_CMD = 'direnv'
 
 def get_output(cmd, cwd, env=None):
     try:
@@ -71,7 +71,7 @@ class Direnv(object):
         with progressbar(sublime.status_message,
                         "direnv: loading " + direnv_path + " %s"):
             returncode, stdout, stderr = get_output(
-                ['direnv', 'export', 'json'],
+                [DIRENV_CMD, 'export', 'json'],
                 direnv_path,
                 env)
         if returncode != 0:
@@ -114,7 +114,7 @@ class DirenvEventListener(sublime_plugin.ViewEventListener):
 class DirenvAllow(sublime_plugin.TextCommand):
     def run(self, edit):
         returncode, stdout, stderr = get_output(
-            ['direnv', 'allow'],
+            [DIRENV_CMD, 'allow'],
             os.path.dirname(self.view.file_name()))
         if returncode != 0:
             sublime.status_message(stderr)
@@ -125,7 +125,7 @@ class DirenvAllow(sublime_plugin.TextCommand):
 class DirenvDeny(sublime_plugin.TextCommand):
     def run(self, edit):
         returncode, stdout, stderr = get_output(
-            ['direnv', 'deny'],
+            [DIRENV_CMD, 'deny'],
             os.path.dirname(self.view.file_name()))
         if returncode != 0:
             sublime.status_message(stderr)
