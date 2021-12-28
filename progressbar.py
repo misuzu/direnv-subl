@@ -5,7 +5,7 @@ import time
 
 
 @contextlib.contextmanager
-def progressbar(func, message, interval=80):
+def progressbar(notify, interval=80):
     def progress_thread(event):
         # https://raw.githubusercontent.com/sindresorhus/cli-spinners/master/spinners.json
         for tick in itertools.cycle([
@@ -20,7 +20,7 @@ def progressbar(func, message, interval=80):
             time.sleep(interval / 1000)
             if event.is_set():
                 break
-            func(message % tick)
+            notify(tick)
 
     event = threading.Event()
     thread = threading.Thread(

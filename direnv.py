@@ -1,4 +1,5 @@
 import concurrent.futures
+import hashlib
 import json
 import os
 import re
@@ -28,12 +29,38 @@ def get_output(cmd, cwd, env=None):
     )
 
 
+class DirenvCache(object):
+    def __init__(self, cache_path):
+        self._cache = {}
+        self._cache_path = cache_path
+
+    def _get_cache_file_path(self, file_path):
+        name = '%s-%s.cache' % (
+            hashlib.md5(file_path.encode()).hexdigest(),
+            os.path.basename(file_path))
+        return os.path.join(self._cache_path, name)
+
+    def get(self, file_path):
+        path = self._get_cache_file_path(file_path)
+        return {
+            k: v
+            for k, v in self._cache.get(path, {}).items()
+            if v is not None}
+
+    def set(self, file_path, value):
+        path = self._get_cache_file_path(file_path)
+        self._cache[path] = value
+
+    def clear(self):
+        self._cache.clear()
+
+
 class Direnv(object):
-    def __init__(self):
+    def __init__(self, cache):
+        self._cache = cache
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        self._direnv = {}
-        self._previous_environment = {}
-        self._current_direnv_path = None
+        self._current_path = None
+        self._previous_env = {}
 
     @staticmethod
     def _find_envrc_directory(file_name):
@@ -45,12 +72,12 @@ class Direnv(object):
 
     def _update_environment(self, file_path):
         direnv_path = self._find_envrc_directory(file_path)
-        direnv_path_prev = self._current_direnv_path
+        direnv_path_prev = self._current_path
 
-        self._current_direnv_path = direnv_path
+        self._current_path = direnv_path
 
-        self._previous_environment, previous = {}, self._previous_environment
-        for key, value in previous.items():
+        self._previous_env, previous_env = {}, self._previous_env
+        for key, value in previous_env.items():
             if value is None:
                 os.environ.pop(key)
             else:
@@ -62,31 +89,29 @@ class Direnv(object):
                     "direnv: unloaded %s" % direnv_path_prev)
             return
 
-        environment = self._direnv.setdefault(direnv_path, {})
+        environment = self._cache.get(direnv_path)
 
-        env = {}
-        env.update(os.environ)
-        env.update({k: v for k, v in environment.items() if v is not None})
-        with progressbar(
-                sublime.status_message,
-                "direnv: loading " + direnv_path + " %s"):
+        with progressbar(lambda tick: sublime.status_message(
+                "direnv: loading %s %s" % (direnv_path, tick))):
             returncode, stdout, stderr = get_output(
                 ['direnv', 'export', 'json'],
                 direnv_path,
-                env)
+                dict(os.environ, **environment))
         if returncode != 0:
             sublime.status_message(stderr)
-            self._current_direnv_path = None
+            self._current_path = None
             return
 
-        stdout and environment.update(json.loads(stdout))
+        if stdout:
+            environment = dict(environment, **json.loads(stdout))
+            self._cache.set(direnv_path, environment)
 
         for key, value in environment.items():
             if key.startswith('DIRENV_') or value is None:
                 continue
             prev = os.environ.get(key)
             if prev != value:
-                self._previous_environment[key] = prev
+                self._previous_env[key] = prev
                 os.environ[key] = value
 
         if stdout or direnv_path != direnv_path_prev:
@@ -97,7 +122,8 @@ class Direnv(object):
         future.add_done_callback(lambda f: f.result())
 
 
-direnv = Direnv()
+direnv_cache = DirenvCache(os.path.join(sublime.cache_path(), 'Direnv'))
+direnv = Direnv(direnv_cache)
 
 
 class DirenvEventListener(sublime_plugin.ViewEventListener):
@@ -131,3 +157,7 @@ class DirenvDeny(sublime_plugin.TextCommand):
             sublime.status_message(stderr)
         else:
             direnv.push(self.view.file_name())
+
+
+def plugin_unloaded():
+    direnv.push(None)
