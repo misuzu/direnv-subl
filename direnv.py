@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 
 import sublime
@@ -42,16 +43,24 @@ class DirenvCache(object):
 
     def get(self, file_path):
         path = self._get_cache_file_path(file_path)
+        if path not in self._cache:
+            if os.path.isfile(path):
+                with open(path, 'r') as f:
+                    self._cache[path] = json.load(f)
         return {
             k: v
             for k, v in self._cache.get(path, {}).items()
             if v is not None}
 
     def set(self, file_path, value):
+        os.makedirs(self._cache_path, exist_ok=True)
         path = self._get_cache_file_path(file_path)
+        with open(path, 'w') as f:
+            json.dump(value, f)
         self._cache[path] = value
 
     def clear(self):
+        shutil.rmtree(self._cache_path, ignore_errors=True)
         self._cache.clear()
 
 
