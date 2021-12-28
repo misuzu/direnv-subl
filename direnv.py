@@ -16,18 +16,25 @@ ANSI_ESCAPE_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
 def get_output(cmd, cwd, env=None):
-    process = subprocess.Popen(
-        cmd,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
-    returncode = process.wait()
-    return (
-        returncode,
-        process.stdout.read().decode(),
-        ANSI_ESCAPE_RE.sub('', process.stderr.read().decode()),
-    )
+    try:
+        process = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
+    except OSError as e:
+        return (
+            e.errno,
+            None,
+            "Executing %s has failed: %s" % (cmd, e)
+        )
+    else:
+        return (
+            process.wait(),
+            process.stdout.read().decode(),
+            ANSI_ESCAPE_RE.sub('', process.stderr.read().decode())
+        )
 
 
 class DirenvCache(object):
@@ -127,8 +134,9 @@ class Direnv(object):
             sublime.status_message("direnv: loaded %s" % direnv_path)
 
     def push(self, file_path):
-        future = self._executor.submit(self._update_environment, file_path)
-        future.add_done_callback(lambda f: f.result())
+        if shutil.which('direnv') is not None:
+            future = self._executor.submit(self._update_environment, file_path)
+            future.add_done_callback(lambda f: f.result())
 
 
 direnv_cache = DirenvCache(os.path.join(sublime.cache_path(), 'Direnv'))
@@ -166,6 +174,14 @@ class DirenvDeny(sublime_plugin.TextCommand):
             sublime.status_message(stderr)
         else:
             direnv.push(self.view.file_name())
+
+
+def plugin_loaded():
+    if shutil.which('direnv') is None:
+        sublime.status_message(
+            "direnv: No direnv executable found, "
+            "follow https://direnv.net for installation instructions")
+        return
 
 
 def plugin_unloaded():
