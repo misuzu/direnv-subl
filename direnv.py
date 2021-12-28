@@ -176,6 +176,12 @@ class DirenvDeny(sublime_plugin.TextCommand):
             direnv.push(self.view.file_name())
 
 
+class DirenvClear(sublime_plugin.TextCommand):
+    def run(self, edit):
+        direnv_cache.clear()
+        direnv.push(self.view.file_name())
+
+
 def plugin_loaded():
     if shutil.which('direnv') is None:
         sublime.status_message(

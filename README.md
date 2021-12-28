@@ -24,3 +24,4 @@ In order to run a command press `(ctrl|cmd)+shift+p` to view the Command Palette
 
 * `direnv allow` to allow and load the current .envrc
 * `direnv deny` to deny and unload the current .envrc
+* `direnv clear cache` to clear filesystem cache

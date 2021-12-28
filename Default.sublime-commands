@@ -6,5 +6,9 @@
     {
         "caption": "direnv deny",
         "command": "direnv_deny"
+    },
+    {
+        "caption": "direnv clear cache",
+        "command": "direnv_clear"
     }
 ]
