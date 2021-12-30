@@ -87,20 +87,22 @@ class Direnv(object):
             file_name = os.path.dirname(file_name)
 
     def _update_environment(self, file_path):
+        def rollback_env():
+            self._previous_env, previous_env = {}, self._previous_env
+            for key, value in previous_env.items():
+                if value is None:
+                    os.environ.pop(key)
+                else:
+                    os.environ[key] = value
+
         direnv_path = self._find_envrc_directory(file_path)
         direnv_path_prev = self._current_path
 
         self._current_path = direnv_path
 
-        self._previous_env, previous_env = {}, self._previous_env
-        for key, value in previous_env.items():
-            if value is None:
-                os.environ.pop(key)
-            else:
-                os.environ[key] = value
-
         if direnv_path is None:
             if direnv_path_prev is not None:
+                rollback_env()
                 sublime.status_message(
                     "direnv: unloaded %s" % direnv_path_prev)
             return
@@ -114,13 +116,16 @@ class Direnv(object):
                 direnv_path,
                 dict(os.environ, **environment))
         if returncode != 0:
-            sublime.status_message(stderr)
             self._current_path = None
+            rollback_env()
+            sublime.status_message(stderr)
             return
 
         if stdout:
             environment = dict(environment, **json.loads(stdout))
             self._cache.set(direnv_path, environment)
+
+        rollback_env()
 
         for key, value in environment.items():
             if key.startswith('DIRENV_') or value is None:
