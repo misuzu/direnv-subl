@@ -1,6 +1,6 @@
-# [direnv](https://direnv.net) integration for Sublime Text 3+
+# [direnv](https://direnv.net) integration for Sublime Text 4
 
-This plugin adds support for direnv to Sublime Text 3+.
+This plugin adds support for direnv to Sublime Text 4.
 
 ## Prerequisites
 
