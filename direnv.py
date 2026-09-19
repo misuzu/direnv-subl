@@ -30,10 +30,11 @@ def get_output(cmd, cwd, env=None):
             "Executing %s has failed: %s" % (cmd, e)
         )
     else:
+        stdout, stderr = process.communicate()
         return (
-            process.wait(),
-            process.stdout.read().decode(),
-            ANSI_ESCAPE_RE.sub('', process.stderr.read().decode())
+            process.returncode,
+            stdout.decode(),
+            ANSI_ESCAPE_RE.sub('', stderr.decode())
         )
 
 
