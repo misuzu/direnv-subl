@@ -81,11 +81,14 @@ class Direnv(object):
 
     @staticmethod
     def _find_envrc_directory(file_name):
-        while file_name and file_name != '/':
+        while file_name:
             envrc_path = os.path.join(file_name, '.envrc')
             if os.path.isfile(envrc_path):
                 return file_name
-            file_name = os.path.dirname(file_name)
+            parent = os.path.dirname(file_name)
+            if parent == file_name:
+                break
+            file_name = parent
 
     def _update_environment(self, file_path):
         def rollback_env():
