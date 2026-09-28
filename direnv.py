@@ -72,6 +72,16 @@ class DirenvCache(object):
         self._cache.clear()
 
 
+# On Windows, direnv runs .envrc through Git for Windows' bash, so
+# `direnv export json` also reports the variables *bash itself* sets up
+# when it starts -- not only what .envrc exports. Applying these to the
+# plugin host makes other plugins' subprocesses silently resolve
+# find/sort/timeout/... to Git's MSYS versions instead of Windows'.
+_WINDOWS_BASH_STARTUP_NOISE = frozenset((
+    'HOME', 'EXEPATH', 'MSYSTEM', 'PLINK_PROTOCOL',
+))
+
+
 class Direnv(object):
     def __init__(self, cache):
         self._cache = cache
@@ -89,6 +99,19 @@ class Direnv(object):
             if parent == file_name:
                 break
             file_name = parent
+
+    @staticmethod
+    def _merge_windows_path(original, new):
+        """Keep `original`'s entries in their original order and only
+        append entries `new` adds, instead of replacing PATH outright --
+        works around bash-for-Windows prepending Git's own MSYS bin
+        directories ahead of the real PATH (see
+        _WINDOWS_BASH_STARTUP_NOISE)."""
+        original_entries = original.split(os.pathsep) if original else []
+        new_entries = new.split(os.pathsep) if new else []
+        seen = set(original_entries)
+        added = [e for e in new_entries if e not in seen and not seen.add(e)]
+        return os.pathsep.join(original_entries + added)
 
     def _update_environment(self, file_path):
         def rollback_env():
@@ -134,6 +157,12 @@ class Direnv(object):
         for key, value in environment.items():
             if key.startswith('DIRENV_') or value is None:
                 continue
+            if os.name == 'nt':
+                if key in _WINDOWS_BASH_STARTUP_NOISE:
+                    continue
+                if key == 'PATH':
+                    value = self._merge_windows_path(
+                        os.environ.get('PATH', ''), value)
             prev = os.environ.get(key)
             if prev != value:
                 self._previous_env[key] = prev
