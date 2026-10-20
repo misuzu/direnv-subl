@@ -172,9 +172,22 @@ class Direnv(object):
             sublime.status_message("direnv: loaded %s" % direnv_path)
 
     def push(self, file_path):
-        if shutil.which('direnv') is not None:
+        if file_path and shutil.which('direnv') is not None:
             future = self._executor.submit(self._update_environment, file_path)
             future.add_done_callback(lambda f: f.result())
+
+    def command(self, command, file_name):
+        if not file_name:
+            sublime.status_message("direnv: the current file is not saved yet")
+            return
+        returncode, stdout, stderr = get_output(
+            ['direnv', command],
+            os.path.dirname(file_name),
+        )
+        if returncode != 0:
+            sublime.status_message(stderr)
+        else:
+            self.push(file_name)
 
 
 direnv_cache = DirenvCache(os.path.join(sublime.cache_path(), 'Direnv'))
@@ -194,24 +207,12 @@ class DirenvEventListener(sublime_plugin.ViewEventListener):
 
 class DirenvAllow(sublime_plugin.TextCommand):
     def run(self, edit):
-        returncode, stdout, stderr = get_output(
-            ['direnv', 'allow'],
-            os.path.dirname(self.view.file_name()))
-        if returncode != 0:
-            sublime.status_message(stderr)
-        else:
-            direnv.push(self.view.file_name())
+        direnv.command('allow', self.view.file_name())
 
 
 class DirenvDeny(sublime_plugin.TextCommand):
     def run(self, edit):
-        returncode, stdout, stderr = get_output(
-            ['direnv', 'deny'],
-            os.path.dirname(self.view.file_name()))
-        if returncode != 0:
-            sublime.status_message(stderr)
-        else:
-            direnv.push(self.view.file_name())
+        direnv.command('deny', self.view.file_name())
 
 
 class DirenvClear(sublime_plugin.TextCommand):
